@@ -18,7 +18,7 @@ test('two players, spectator permissions, invitations, chat, result and account 
  await req('/auth/login',{email:'alpha@example.com',password:'wrongwrong1'},null,401);
  const login=await req('/auth/login',{email:'alpha@example.com',password:'verysecure123'});assert.equal(login.user.id,a.user.id);
  const {id}=await req('/rooms',{closed:true},a.token);
- const secondRoom=await req('/rooms',{closed:false},b.token);assert.notEqual(secondRoom.id,id);assert.equal((await req('/lobby',undefined,a.token)).rooms.length,2,'different players can own simultaneous tables');await act(secondRoom.id,b.token,'leave');
+ const secondRoom=await req('/rooms',{closed:false},b.token);assert.notEqual(secondRoom.id,id);const activeTables=(await req('/lobby',undefined,a.token)).rooms;assert.equal(activeTables.length,2,'different players can own simultaneous tables');assert.notEqual(activeTables[0].name,activeTables[1].name,'active tables have different bird names');assert.ok(activeTables.every(table=>/^Stůl [\p{L} ]+$/u.test(table.name)),'table names are readable words');await act(secondRoom.id,b.token,'leave');
  await act(id,a.token,'invite',{target:b.user.id});await pause(30);assert.ok(lobbyB.messages.some(m=>m.type==='invitation'&&m.room===id));await act(id,a.token,'cancelInvite');
  await req('/room/'+id+'/join',{},b.token,403);
  const link=await act(id,a.token,'link');await req('/room/'+id+'/join',{invite:link.token},b.token);

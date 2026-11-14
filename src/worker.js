@@ -1,4 +1,5 @@
 import {DurableObject} from 'cloudflare:workers';
+import {chooseTableName} from './table-names.js';
 import {newGame,move,disconnect,reconnect,elo,TURN} from './game.js';
 const json=(v,status=200)=>Response.json(v,{status,headers:{'Cache-Control':'no-store'}});
 const fail=(text,status=400)=>{throw Object.assign(Error(text),{status});};
@@ -72,9 +73,14 @@ export class Directory extends Stored{
  lobby(){return {type:'lobby',rooms:this.all('room:').map(({key,...r})=>r),users:this.presence(),now:Date.now()};}
  broadcast(){const d=this.lobby();for(const ws of this.ctx.getWebSockets())this.send(ws,d);}
  notify(id,data){for(const ws of this.ctx.getWebSockets(id))this.send(ws,data);}
+ roomName(id){
+  const key='room-name:'+id,existing=this.read(key);if(existing)return existing.name;
+  const used=new Set([...this.all('room:'),...this.all('room-name:')].map(record=>record.name));
+  const name=chooseTableName(used);this.write(key,{name,until:Date.now()+120000});return name;
+ }
  claim(id,room){const busy=this.read('busy:'+id);if(busy&&busy.room!==room)fail('Hráč je zaneprázdněn.');this.write('busy:'+id,{room});}
  release(id,room){if(this.read('busy:'+id)?.room===room)this.remove('busy:'+id);}
- updateRoom(room){if(room.deleted)this.remove('room:'+room.id);else this.write('room:'+room.id,room);this.broadcast();}
+ updateRoom(room){if(room.deleted){this.remove('room:'+room.id);this.remove('room-name:'+room.id);}else this.write('room:'+room.id,room);this.broadcast();}
  checkInvite(from,target){const u=this.active(this.user(target));if(u.ignored?.includes(from))fail('Tento hráč nepřijímá vaše pozvánky.');if(this.read('busy:'+target))fail('Hráč je zaneprázdněn.');if(!this.ctx.getWebSockets(target).some(w=>w.readyState===1))fail('Hráč už není online.');return publicUser(u);}
  result(id,players,winner,annulled){
   if(this.read('result:'+id))return;this.ctx.storage.transactionSync(()=>{
@@ -100,7 +106,7 @@ export class Directory extends Stored{
   else if(data.action==='ban'){target.bannedUntil=data.permanent?8640000000000000:Date.now()+Math.min(31536000,Math.max(60,Number(data.seconds)||86400))*1000;this.revoke(target.id);}
   else fail('Neznámý postih.');this.write('user:'+target.id,target);this.notify(target.id,{type:'warning',text:target.warning||'Administrátor upravil váš přístup.'});return {ok:true};
  }
- async alarm(){const now=Date.now();for(const prefix of ['rate:','ticket:','reset:','session:','report:'])for(const r of this.all(prefix))if(r.until<=now)this.remove(r.key);for(const u of this.all('user:'))if(u.guest&&u.created<now-30*86400000&&!this.read('busy:'+u.id)){this.revoke(u.id);this.remove(u.key);}const reports=this.all('report:').map(r=>r.until).filter(t=>t>now);await this.ctx.storage.setAlarm(Math.min(now+3600000,...reports));}
+ async alarm(){const now=Date.now();for(const prefix of ['rate:','ticket:','reset:','session:','report:'])for(const r of this.all(prefix))if(r.until<=now)this.remove(r.key);for(const u of this.all('user:'))if(u.guest&&u.created<now-30*86400000&&!this.read('busy:'+u.id)){this.revoke(u.id);this.remove(u.key);}for(const reservation of this.all('room-name:'))if(reservation.until<=now&&!this.read('room:'+reservation.key.slice('room-name:'.length)))this.remove(reservation.key);const reports=this.all('report:').map(r=>r.until).filter(t=>t>now);await this.ctx.storage.setAlarm(Math.min(now+3600000,...reports));}
 }
 export class Room extends Stored{
  constructor(ctx,env){super(ctx,env);ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping','pong'));}
@@ -137,7 +143,7 @@ export class Room extends Stored{
    else if(!g.paused&&g.deadline<=now)this.finish(s,{winner:g.players[1-g.turn],reason:'čas'});
   }
  }
- async init(u,id,closed){await this.directory().claim(u.id,id);if(this.state())fail('Místnost již existuje.');const s={id,name:'Stůl '+id.slice(0,5).toUpperCase(),players:[publicUser(u),null],ready:[false,false],closed:!!closed,chatLocked:false,chat:[],game:null,created:Date.now(),cleanupAt:Date.now()+60000};this.save(s);await this.flush();return {id};}
+ async init(u,id,closed){await this.directory().claim(u.id,id);if(this.state())fail('Místnost již existuje.');const name=await this.directory().roomName(id);const s={id,name,players:[publicUser(u),null],ready:[false,false],closed:!!closed,chatLocked:false,chat:[],game:null,created:Date.now(),cleanupAt:Date.now()+60000};this.save(s);await this.flush();return {id};}
  async join(u,invite){let s=this.state();if(!s)fail('Stůl již neexistuje.',404);this.expire(s);this.save(s);
   if(this.player(s,u)>=0)return {id:s.id};
   if(s.game?.status==='playing'||s.players.filter(Boolean).length===2)fail('Obě místa jsou obsazená.');
