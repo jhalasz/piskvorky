@@ -68,14 +68,14 @@ export class Directory extends Stored{
   this.broadcast();return {user:data.action==='delete'?null:publicUser(u)};
  }
  leaderboard(){return this.all('user:').filter(u=>!u.guest).map(publicUser).sort((a,b)=>b.rating-a.rating||a.nickname.localeCompare(b.nickname)).slice(0,200);}
- presence(){return [...new Set(this.ctx.getWebSockets().map(w=>w.deserializeAttachment()?.id))].map(id=>this.user(id)).filter(u=>u&&!(u.bannedUntil>Date.now())).map(u=>({...publicUser(u),room:this.read('busy:'+u.id)?.room||null}));}
+ presence(){return [...new Set(this.ctx.getWebSockets().filter(w=>w.readyState===1).map(w=>w.deserializeAttachment()?.id))].map(id=>this.user(id)).filter(u=>u&&!(u.bannedUntil>Date.now())).map(u=>({...publicUser(u),room:this.read('busy:'+u.id)?.room||null}));}
  lobby(){return {type:'lobby',rooms:this.all('room:').map(({key,...r})=>r),users:this.presence(),now:Date.now()};}
  broadcast(){const d=this.lobby();for(const ws of this.ctx.getWebSockets())this.send(ws,d);}
  notify(id,data){for(const ws of this.ctx.getWebSockets(id))this.send(ws,data);}
  claim(id,room){const busy=this.read('busy:'+id);if(busy&&busy.room!==room)fail('Hráč je zaneprázdněn.');this.write('busy:'+id,{room});}
  release(id,room){if(this.read('busy:'+id)?.room===room)this.remove('busy:'+id);}
  updateRoom(room){if(room.deleted)this.remove('room:'+room.id);else this.write('room:'+room.id,room);this.broadcast();}
- checkInvite(from,target){const u=this.active(this.user(target));if(u.ignored?.includes(from))fail('Tento hráč nepřijímá vaše pozvánky.');if(this.read('busy:'+target))fail('Hráč je zaneprázdněn.');if(!this.ctx.getWebSockets(target).length)fail('Hráč už není online.');return publicUser(u);}
+ checkInvite(from,target){const u=this.active(this.user(target));if(u.ignored?.includes(from))fail('Tento hráč nepřijímá vaše pozvánky.');if(this.read('busy:'+target))fail('Hráč je zaneprázdněn.');if(!this.ctx.getWebSockets(target).some(w=>w.readyState===1))fail('Hráč už není online.');return publicUser(u);}
  result(id,players,winner,annulled){
   if(this.read('result:'+id))return;this.ctx.storage.transactionSync(()=>{
    this.write('result:'+id,{at:Date.now()});if(annulled)return;

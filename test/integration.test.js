@@ -5,16 +5,21 @@ test('two players, spectator permissions, invitations, chat, result and account 
  const sockets=[];
  async function req(path,body,token,expected=200){const r=await mf.dispatchFetch('http://localhost/api'+path,{method:body===undefined?'GET':'POST',headers:{...(body===undefined?{}:{'Content-Type':'application/json'}),...(token?{Authorization:'Bearer '+token}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});const d=await r.json();assert.equal(r.status,expected,JSON.stringify(d));return d;}
  async function socket(id,token){const t=await req('/ticket',{room:id},token),r=await mf.dispatchFetch(`http://localhost/api/ws/room?room=${id}&ticket=${t.ticket}`,{headers:{Upgrade:'websocket'}});assert.equal(r.status,101);const ws=r.webSocket;ws.accept();sockets.push(ws);const messages=[];ws.addEventListener('message',e=>{if(e.data!=='pong')messages.push(JSON.parse(e.data));});await pause(40);return {ws,messages};}
+ async function lobbySocket(token){const {ticket}=await req('/ticket',{room:'lobby'},token);const r=await mf.dispatchFetch('http://localhost/api/ws/lobby?ticket='+ticket,{headers:{Upgrade:'websocket'}});assert.equal(r.status,101);const ws=r.webSocket,messages=[];ws.accept();sockets.push(ws);ws.addEventListener('message',event=>{if(event.data!=='pong')messages.push(JSON.parse(event.data));});await pause(40);return {ws,messages};}
  async function act(id,token,action,extra={},expected=200){await pause(160);return req('/room/'+id+'/action',{action,...extra},token,expected);}
  try{
  const a=await req('/auth/register',{email:'alpha@example.com',password:'verysecure123',nickname:'Alpha',consent:true});
  await mf.setOptions({...options,bindings:{...options.bindings,ADMIN_USER_ID:a.user.id}});
+ const lobbyA=await lobbySocket(a.token);
  const b=await req('/auth/register',{email:'beta@example.com',password:'verysecure123',nickname:'Beta',consent:true});
+ const lobbyB=await lobbySocket(b.token);await pause(40);assert.ok(lobbyA.messages.filter(m=>m.type==='lobby').at(-1).users.some(u=>u.id===b.user.id&&!u.guest),'newly registered player appears in live presence');
  const c=await req('/auth/guest',{});
  await req('/auth/register',{email:'other@example.com',password:'verysecure123',nickname:'alpha',consent:true},null,400);
  await req('/auth/login',{email:'alpha@example.com',password:'wrongwrong1'},null,401);
  const login=await req('/auth/login',{email:'alpha@example.com',password:'verysecure123'});assert.equal(login.user.id,a.user.id);
  const {id}=await req('/rooms',{closed:true},a.token);
+ const secondRoom=await req('/rooms',{closed:false},b.token);assert.notEqual(secondRoom.id,id);assert.equal((await req('/lobby',undefined,a.token)).rooms.length,2,'different players can own simultaneous tables');await act(secondRoom.id,b.token,'leave');
+ await act(id,a.token,'invite',{target:b.user.id});await pause(30);assert.ok(lobbyB.messages.some(m=>m.type==='invitation'&&m.room===id));await act(id,a.token,'cancelInvite');
  await req('/room/'+id+'/join',{},b.token,403);
  const link=await act(id,a.token,'link');await req('/room/'+id+'/join',{invite:link.token},b.token);
  const sa=await socket(id,a.token),sb=await socket(id,b.token);

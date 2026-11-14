@@ -19,3 +19,5 @@ main.in-game{padding-top:28px}.game-title{margin:0;line-height:1.3}
 .axis-left{grid-column:1}.axis-right{grid-column:3}
 @media(min-width:761px){.board-coordinates{max-width:min(100%,max(360px,calc(100vh - 365px)))}}
 @media(max-width:760px){.board-coordinates{grid-template-columns:17px minmax(0,1fr) 17px;grid-template-rows:18px auto 18px}.board-axis{font-size:9px}}
+
+.room-meta{align-items:center}.room-meta .leave-room{margin-left:auto;min-height:44px;padding:12px 18px;border:1px solid #9c3e36;border-radius:9px;background:var(--red);color:#fff;font-size:13px;font-weight:700;text-decoration:none}.room-meta .leave-room:hover{background:#943c34}.room-meta .leave-room:focus-visible{outline-color:var(--red);outline-offset:4px}@media(max-width:760px){.room-meta .leave-room{width:100%;margin-left:0}}
