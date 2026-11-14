@@ -8,3 +8,14 @@
 @media(min-width:761px){.game-layout{grid-template-columns:minmax(0,720px) 325px;justify-content:center}.board-wrap{max-width:min(100%,max(360px,calc(100vh - 365px)));margin:0 auto}.cell{font-size:clamp(13px,2vw,27px)}}
 
 main.in-game{padding-top:28px}.game-title{margin:0;line-height:1.3}
+
+.board-coordinates{display:grid;grid-template-columns:22px minmax(0,1fr) 22px;grid-template-rows:22px auto 22px;width:100%;margin:0 auto;user-select:none}
+.board-coordinates .board-wrap{grid-column:2;grid-row:2;max-width:none;width:100%;margin:0}
+.board-axis{display:grid;font-size:11px;font-weight:600;color:var(--muted);line-height:1;pointer-events:none}
+.board-axis span{display:grid;place-items:center;min-width:0;min-height:0}
+.axis-top,.axis-bottom{grid-template-columns:repeat(19,minmax(0,1fr));grid-column:2}
+.axis-top{grid-row:1}.axis-bottom{grid-row:3}
+.axis-left,.axis-right{grid-template-rows:repeat(19,minmax(0,1fr));grid-row:2;min-height:0}
+.axis-left{grid-column:1}.axis-right{grid-column:3}
+@media(min-width:761px){.board-coordinates{max-width:min(100%,max(360px,calc(100vh - 365px)))}}
+@media(max-width:760px){.board-coordinates{grid-template-columns:17px minmax(0,1fr) 17px;grid-template-rows:18px auto 18px}.board-axis{font-size:9px}}
