@@ -1,0 +1,1 @@
+{"name":"piskvorky","version":"1.0.0","private":true,"type":"module","scripts":{"test":"node --test test/*.test.js","dev":"wrangler dev","deploy":"wrangler deploy","check":"node --check src/worker.js && node --check public/app.js"},"devDependencies":{"wrangler":"^4.0.0","miniflare":"^4.0.0"}}

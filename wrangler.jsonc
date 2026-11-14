@@ -1,0 +1,8 @@
+{
+ "name":"piskvorky-api","main":"src/worker.js","compatibility_date":"2026-11-14",
+ "assets":{"directory":"public","binding":"ASSETS","run_worker_first":["/api/*"]},
+ "durable_objects":{"bindings":[{"name":"DIRECTORY","class_name":"Directory"},{"name":"ROOM","class_name":"Room"}]},
+ "migrations":[{"tag":"v1","new_sqlite_classes":["Directory","Room"]}],
+ "observability":{"enabled":true,"traces":{"enabled":true}},
+ "vars":{"ALLOWED_ORIGINS":"https://jhalasz.github.io","GOOGLE_CLIENT_ID":"","PUBLIC_URL":"https://piskvorky-api.jan-halasz.workers.dev"}
+}
