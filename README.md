@@ -1,5 +1,7 @@
 # Piškvorky
 
+Vzpomínka na piškvorky na Atlase.
+
 Česká online hra na desce 19 × 19: nejméně pět symbolů v řadě, serverová pravidla a časomíra, společný chat a lokální trénink.
 
 **Hra:** https://piskvorky-api.jan-halasz.workers.dev
