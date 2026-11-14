@@ -100,7 +100,7 @@ export class Directory extends Stored{
   else if(data.action==='ban'){target.bannedUntil=data.permanent?8640000000000000:Date.now()+Math.min(31536000,Math.max(60,Number(data.seconds)||86400))*1000;this.revoke(target.id);}
   else fail('Neznámý postih.');this.write('user:'+target.id,target);this.notify(target.id,{type:'warning',text:target.warning||'Administrátor upravil váš přístup.'});return {ok:true};
  }
- async alarm(){const now=Date.now();for(const prefix of ['rate:','ticket:','reset:','session:','report:'])for(const r of this.all(prefix))if(r.until<now)this.remove(r.key);for(const u of this.all('user:'))if(u.guest&&u.created<now-30*86400000&&!this.read('busy:'+u.id)){this.revoke(u.id);this.remove(u.key);}await this.ctx.storage.setAlarm(now+3600000);}
+ async alarm(){const now=Date.now();for(const prefix of ['rate:','ticket:','reset:','session:','report:'])for(const r of this.all(prefix))if(r.until<=now)this.remove(r.key);for(const u of this.all('user:'))if(u.guest&&u.created<now-30*86400000&&!this.read('busy:'+u.id)){this.revoke(u.id);this.remove(u.key);}const reports=this.all('report:').map(r=>r.until).filter(t=>t>now);await this.ctx.storage.setAlarm(Math.min(now+3600000,...reports));}
 }
 export class Room extends Stored{
  constructor(ctx,env){super(ctx,env);ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping','pong'));}
@@ -108,7 +108,7 @@ export class Room extends Stored{
  state(){return this.read('state');}
  save(s){this.write('state',s);}
  player(s,u){return s.players.findIndex(p=>p?.id===u.id);}
- summary(s){return {id:s.id,name:s.name,players:s.players.map(p=>p?{id:p.id,nickname:p.nickname}:null),status:s.game?.status==='playing'?'playing':s.players.filter(Boolean).length===2?'ready':'waiting',closed:s.closed,invite:s.invite?{nickname:s.invite.nickname,until:s.invite.until}:null};}
+ summary(s){return {id:s.id,name:s.name,players:s.players.map(p=>p?{id:p.id,nickname:p.nickname}:null),status:s.game?.status==='playing'?'playing':s.game?.status==='finished'?'finished':s.players.filter(Boolean).length===2?'ready':'waiting',closed:s.closed,invite:s.invite?{nickname:s.invite.nickname,until:s.invite.until}:null};}
  view(s){const {invite,link,...v}=s;return {...v,invite:invite?{id:invite.id,target:invite.target,nickname:invite.nickname,until:invite.until}:null,now:Date.now()};}
  async flush(){let s=this.state();if(!s)return;
   if(s.expiredPlayers?.length){const expired=s.expiredPlayers;delete s.expiredPlayers;this.save(s);for(const id of expired)await this.directory().release(id,s.id);s=this.state();}
