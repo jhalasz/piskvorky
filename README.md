@@ -22,7 +22,7 @@ Testy ověřují pravidla, hranice desky, Elo, přerušení spojení a chování
 
 ## Architektura
 
-- `public/`: samostatný statický web pro GitHub Pages i Cloudflare, bez sestavení. Na mobilu nejdříve vyberete pole a pak potvrdíte tah.
+- `public/`: samostatný statický web pro GitHub Pages i Cloudflare, bez sestavení. Na počítači se tah odešle ihned kliknutím. Na mobilu (dotykové ovládání bez myši) nejdříve vyberete pole a pak potvrdíte tah.
 - `src/game.js`: společná pravidla. `public/game.js` je identická kopie pro prohlížeč.
 - `src/worker.js`: HTTPS API. Každý stůl má vlastní SQLite Durable Object `Room`, hibernující WebSockety a alarmy. `Directory` koordinuje přehled místností, přítomnost, identity a transakční Elo.
 - SQL úložiště obsahuje vždy aktuální desku, nikoli historii tahů. Při ukončení partie je deska na serveru smazána; aktuálně připojené prohlížeče si finální pozici ponechají pro zvýraznění výhry. Nový divák již ukončenou desku nezíská.
