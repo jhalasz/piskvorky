@@ -150,7 +150,7 @@ export class Room extends Stored{
   for(const v of [s.readyUntil,s.invite?.until,s.link?.until,s.game?.draw?.until,s.game?.rematch?.until,s.cleanupAt])if(v)times.push(v);
   if(s.pendingResult)times.push(Date.now()+1000);if(times.length)await this.ctx.storage.setAlarm(Math.max(Date.now()+50,Math.min(...times)));else await this.ctx.storage.deleteAlarm();
  }
- finish(s,result){if(s.game?.status!=='playing')return;const g=s.game;g.status='finished';g.winner=result.winner;g.reason=result.reason;g.annulled=!!result.annulled;g.draw=null;g.deadline=null;g.disconnected={};g.paused=false;
+ finish(s,result){if(s.game?.status!=='playing')return;const g=s.game;g.status='finished';g.finishedAt=Date.now();g.winner=result.winner;g.reason=result.reason;g.annulled=!!result.annulled;g.draw=null;g.deadline=null;g.disconnected={};g.paused=false;
   s.cleanupAt=Date.now()+60000;s.pendingResult={id:g.id,players:g.players,winner:result.winner,annulled:!!result.annulled};
   // Completed positions are sent once but are never retained in durable storage.
   g.board=Array(361).fill(0);g.last=null;g.win=[];s.ready=[false,false];

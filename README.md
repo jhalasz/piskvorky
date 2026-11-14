@@ -51,6 +51,8 @@ Workflow Checks provádí kontrolu syntaxe, sestavení Workeru a všechny testy.
 
 - Host s obnovitelným tokenem; účty e-mail/heslo, unikátní přezdívky, změna jména a smazání účtu. Hesla PBKDF2-SHA256 s náhodnou solí, relace na 30 dnů, v úložišti jen otisky tokenů.
 - Otevřené a uzavřené místnosti, pozorovatelé, zamykání jejich chatu, živý přehled a pozvánky uživatelům, odmítnutí, ignorování a jednorázové odkazy.
+- Vlastní zoom a posouvání desky (100–300 %), na dotykovém zařízení i přiblížení dvěma prsty. Mobilní potvrzování tahu plave ve viditelné oblasti obrazovky včetně změn velikosti a přiblížení.
+- Zvuk a pulzování v posledních 10 sekundách vlastního tahu, důraznější poslední 3 sekundy; samostatný alarm po prohře na čas a výhra/prohra uprostřed desky. Respektuje přepínač zvuku a nastavení omezeného pohybu.
 - Losem určený první hráč, připravenost, časomíra, vzdání, remízy s limitem dvou nabídek, odvety se střídáním zahajujícího, návrat po výpadku.
 - Chat s Enterem, limitem 300 znaků a 1 zpráva/s, základní filtr slov, bezpečné textové vykreslení; hlášení s posledními 50 zprávami a automatickým odstraněním po 2 dnech.
 - Elo (1 000, K=32), okamžité zobrazení aktuálních bodů a jejich změny po partii; hosté a trénink nemění Elo.
