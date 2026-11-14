@@ -35,11 +35,21 @@ test('two players, spectator permissions, invitations, chat, result and account 
  await act(id,second.token,'draw');await act(id,first.token,'drawReply',{accept:false});
  for(let x=0;x<4;x++){await act(id,second.token,'move',{index:20+x});await act(id,first.token,'move',{index:181+x});}
  state=sa.messages.filter(m=>m.type==='state').at(-1).room;assert.equal(state.game.status,'finished');assert.equal(state.game.winner,first.user.id);assert.equal(state.game.board.some(Boolean),false);assert.ok(sa.messages.some(m=>m.type==='final'&&m.win.length===5));
+ assert.equal(state.headToHead.games,1);assert.equal(state.headToHead.draws,0);assert.equal(state.headToHead.wins[first===a?0:1],1);assert.equal(state.players.find(player=>player.id===first.user.id).rating,1016);assert.equal(state.ratingChanges.changes[first===a?0:1],16);assert.ok(lobbyA.messages.filter(m=>m.type==='lobby').at(-1).users.some(player=>player.id===first.user.id&&player.rating===1016),'current Elo is broadcast to account headers');
+ await act(id,a.token,'resign',{},400);assert.equal((await req('/me',undefined,first.token)).user.wins,1,'finished results cannot be counted twice');
  let leaderboard=await req('/leaderboard',undefined,a.token);assert.equal(leaderboard.find(u=>u.id===first.user.id).rating,1016);assert.equal(leaderboard.find(u=>u.id===second.user.id).rating,984);
  await act(id,a.token,'rematch');await act(id,b.token,'rematchReply',{accept:true});state=sa.messages.filter(m=>m.type==='state').at(-1).room;assert.equal(state.game.first,1-(first===a?0:1));
- await act(id,a.token,'resign');await act(id,b.token,'report',{description:'Test důkazu',target:a.user.id});const reports=await req('/admin',{action:'list'},a.token);assert.equal(reports.reports.length,1);assert.equal(reports.reports[0].messages.length,1);
+ await act(id,a.token,'resign');state=sa.messages.filter(m=>m.type==='state').at(-1).room;assert.equal(state.headToHead.games,2);assert.deepEqual(state.players.map(player=>player.rating),[(await req('/me',undefined,a.token)).user.rating,(await req('/me',undefined,b.token)).user.rating]);
+ await act(id,b.token,'rematch');await act(id,a.token,'rematchReply',{accept:true});await act(id,a.token,'draw');await act(id,b.token,'drawReply',{accept:true});state=sa.messages.filter(m=>m.type==='state').at(-1).room;assert.equal(state.headToHead.games,3);assert.equal(state.headToHead.draws,1);const historicScore=state.headToHead;
+ await act(id,a.token,'rematch');await act(id,b.token,'rematchReply',{accept:true});sa.ws.close();sb.ws.close();await pause(120);const recovered=await socket(id,a.token);state=recovered.messages.filter(m=>m.type==='state').at(-1).room;assert.equal(state.game.annulled,true);assert.equal(state.headToHead.games,3,'annulled games do not affect historical scores');
+ await act(id,b.token,'report',{description:'Test důkazu',target:a.user.id});const reports=await req('/admin',{action:'list'},a.token);assert.equal(reports.reports.length,1);assert.equal(reports.reports[0].messages.length,1);
  await req('/admin',{action:'list'},b.token,403);
- await act(id,a.token,'leave');await act(id,b.token,'leave');await req('/account',{action:'delete'},b.token);await req('/me',undefined,b.token,401);
+ await act(id,a.token,'leave');await act(id,b.token,'leave');
+ await req('/account',{action:'rename',nickname:'Beta nová'},b.token);
+ const renewed=await req('/rooms',{closed:false},b.token);await req('/room/'+renewed.id+'/join',{},a.token);const renewedSocket=await socket(renewed.id,b.token);const renewedState=renewedSocket.messages.filter(m=>m.type==='state').at(-1).room;
+ assert.equal(renewedState.players[0].nickname,'Beta nová');assert.deepEqual(renewedState.headToHead.wins,[historicScore.wins[1],historicScore.wins[0]],'history follows players even after changing names, tables and seat order');assert.equal(renewedState.headToHead.draws,1);
+ await act(renewed.id,a.token,'leave');await act(renewed.id,b.token,'leave');await req('/account',{action:'delete'},b.token);await req('/me',undefined,b.token,401);
  leaderboard=await req('/leaderboard',undefined,a.token);assert.equal(leaderboard.some(u=>u.id===b.user.id),false);
+ const replacement=await req('/auth/register',{email:'beta@example.com',password:'verysecure123',nickname:'Beta nová',consent:true});const fresh=await req('/rooms',{closed:false},a.token);await req('/room/'+fresh.id+'/join',{},replacement.token);const freshSocket=await socket(fresh.id,a.token);assert.equal(freshSocket.messages.filter(m=>m.type==='state').at(-1).room.headToHead.games,0,'reusing a deleted nickname does not inherit history');await act(fresh.id,a.token,'leave');await act(fresh.id,replacement.token,'leave');
  }finally{for(const ws of sockets)try{ws.close();}catch{}await mf.dispose();}
 });

@@ -53,7 +53,8 @@ Workflow Checks provádí kontrolu syntaxe, sestavení Workeru a všechny testy.
 - Otevřené a uzavřené místnosti, pozorovatelé, zamykání jejich chatu, živý přehled a pozvánky uživatelům, odmítnutí, ignorování a jednorázové odkazy.
 - Losem určený první hráč, připravenost, časomíra, vzdání, remízy s limitem dvou nabídek, odvety se střídáním zahajujícího, návrat po výpadku.
 - Chat s Enterem, limitem 300 znaků a 1 zpráva/s, základní filtr slov, bezpečné textové vykreslení; hlášení s posledními 50 zprávami a automatickým odstraněním po 2 dnech.
-- Elo (1 000, K=32), statistiky, hosté a trénink bez vlivu na Elo.
+- Elo (1 000, K=32), okamžité zobrazení aktuálních bodů a jejich změny po partii; hosté a trénink nemění Elo.
+- Historické souhrnné skóre dvojice (výhry obou stran a remízy) se uchovává nezávisle na stolu. Rozpoznání je podle ID účtu nebo identity hosta, nikoli přezdívky; při smazání účtu se související skóre smaže. Začíná se počítat od zavedení této funkce, protože starší výsledky se k dvojicím neukládaly.
 - AI v prohlížeči: osm úrovní, host začíná na 1 a po výhře postupuje, registrovaný hráč podle Elo (700–799 úroveň 1, 800–899 úroveň 2, …, od 1 400 úroveň 8). AI vždy bere okamžitou výhru a kryje bezprostřední prohru.
 - Administrační seznam hlášení, varování, dočasné umlčení, dočasný i trvalý zákaz účtu nebo identity hosta.
 
