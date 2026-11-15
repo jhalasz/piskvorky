@@ -1,19 +1,34 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {Miniflare} from 'miniflare';
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 test('two players, spectator permissions, invitations, chat, result and account deletion',async()=>{
- const options={modules:true,scriptPath:'build/worker.js',compatibilityDate:'2026-08-06',durableObjects:{DIRECTORY:{className:'Directory',useSQLite:true},ROOM:{className:'Room',useSQLite:true}},bindings:{ALLOWED_ORIGINS:'http://localhost',GOOGLE_CLIENT_ID:'',ADMIN_USER_ID:''}};const mf=new Miniflare(options);
- const sockets=[];
- async function req(path,body,token,expected=200){const r=await mf.dispatchFetch('http://localhost/api'+path,{method:body===undefined?'GET':'POST',headers:{...(body===undefined?{}:{'Content-Type':'application/json'}),...(token?{Authorization:'Bearer '+token}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});const d=await r.json();assert.equal(r.status,expected,JSON.stringify(d));return d;}
+ const mail=[];let mailFails=false;
+ const options={modules:true,scriptPath:'build/worker.js',compatibilityDate:'2026-08-06',durableObjects:{DIRECTORY:{className:'Directory',useSQLite:true},ROOM:{className:'Room',useSQLite:true}},bindings:{ALLOWED_ORIGINS:'http://localhost',ADMIN_USER_ID:'',RESEND_API_KEY:'test-key',MAIL_FROM:'game@example.com',PUBLIC_URL:'http://localhost'},outboundService:async request=>{if(new URL(request.url).hostname!=='api.resend.com')throw Error('Unexpected outbound request');const message=await request.json();if(mailFails)return Response.json({error:'failed'},{status:503});mail.push(message);return Response.json({id:'test-mail'});}};const mf=new Miniflare(options);
+ const sockets=[];let requestId=0;
+ async function req(path,body,token,expected=200){const r=await mf.dispatchFetch('http://localhost/api'+path,{method:body===undefined?'GET':'POST',headers:{'CF-Connecting-IP':'test-'+(++requestId),...(body===undefined?{}:{'Content-Type':'application/json'}),...(token?{Authorization:'Bearer '+token}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});const d=await r.json();assert.equal(r.status,expected,JSON.stringify(d));return d;}
+ async function register(data){const before=mail.length,r=await req('/auth/register',data);assert.equal(r.verificationRequired,true);assert.equal(r.token,undefined);assert.equal(mail.length,before+1,'email sent before registration response');await req('/auth/login',{email:data.email,password:data.password},undefined,403);const verification=new URL(mail.at(-1).text.match(/http:\/\/localhost[^\s]+/)[0]).hash.slice(8);await req('/auth/verify',{verification});await req('/auth/verify',{verification},undefined,400);return req('/auth/login',{email:data.email,password:data.password});}
  async function socket(id,token){const t=await req('/ticket',{room:id},token),r=await mf.dispatchFetch(`http://localhost/api/ws/room?room=${id}&ticket=${t.ticket}`,{headers:{Upgrade:'websocket'}});assert.equal(r.status,101);const ws=r.webSocket;ws.accept();sockets.push(ws);const messages=[];ws.addEventListener('message',e=>{if(e.data!=='pong')messages.push(JSON.parse(e.data));});await pause(40);return {ws,messages};}
  async function lobbySocket(token){const {ticket}=await req('/ticket',{room:'lobby'},token);const r=await mf.dispatchFetch('http://localhost/api/ws/lobby?ticket='+ticket,{headers:{Upgrade:'websocket'}});assert.equal(r.status,101);const ws=r.webSocket,messages=[];ws.accept();sockets.push(ws);ws.addEventListener('message',event=>{if(event.data!=='pong')messages.push(JSON.parse(event.data));});await pause(40);return {ws,messages};}
  async function act(id,token,action,extra={},expected=200){await pause(160);return req('/room/'+id+'/action',{action,...extra},token,expected);}
  try{
- const a=await req('/auth/register',{email:'alpha@example.com',password:'verysecure123',nickname:'Alpha',consent:true});
+ const a=await register({email:'alpha@example.com',password:'verysecure123',nickname:'Alpha',consent:true});
  await mf.setOptions({...options,bindings:{...options.bindings,ADMIN_USER_ID:a.user.id}});
+ assert.equal((await req('/me',undefined,a.token)).user.admin,true);
  const lobbyA=await lobbySocket(a.token);
- const b=await req('/auth/register',{email:'beta@example.com',password:'verysecure123',nickname:'Beta',consent:true});
+ const b=await register({email:'beta@example.com',password:'verysecure123',nickname:'Beta',consent:true});
  const lobbyB=await lobbySocket(b.token);await pause(40);assert.ok(lobbyA.messages.filter(m=>m.type==='lobby').at(-1).users.some(u=>u.id===b.user.id&&!u.guest),'newly registered player appears in live presence');
  const c=await req('/auth/guest',{});
+ assert.equal((await req('/me',undefined,b.token)).user.admin,false);
+ await req('/feedback',{type:'bug',text:'Po kliknutí se deska neobnovila.',screen:'game'},c.token);
+ await req('/feedback',{type:'idea',text:'Přidat turnaj pro kamarády.'},b.token);
+ await req('/feedback',{type:'other',text:'Invalid feedback kind'},b.token,400);
+ await req('/feedback',{type:'bug',text:'short'},b.token,400);
+ let feedback=(await req('/admin',{action:'list'},a.token)).feedback;assert.equal(feedback.length,2);
+ await req('/admin',{action:'resolveFeedback',id:feedback[0].id},b.token,403);
+ await req('/admin',{action:'resolveFeedback',id:feedback[0].id},a.token);assert.equal((await req('/admin',{action:'list'},a.token)).feedback.find(f=>f.id===feedback[0].id).status,'resolved');
+ await req('/admin',{action:'reopenFeedback',id:feedback[0].id},a.token);
+ mailFails=true;await req('/auth/register',{email:'failed@example.com',password:'verysecure123',nickname:'Failed',consent:true},undefined,503);mailFails=false;
+ await req('/auth/login',{email:'failed@example.com',password:'verysecure123'},undefined,401);
+
  await req('/auth/register',{email:'other@example.com',password:'verysecure123',nickname:'alpha',consent:true},null,400);
  await req('/auth/login',{email:'alpha@example.com',password:'wrongwrong1'},null,401);
  const login=await req('/auth/login',{email:'alpha@example.com',password:'verysecure123'});assert.equal(login.user.id,a.user.id);
@@ -50,6 +65,9 @@ test('two players, spectator permissions, invitations, chat, result and account 
  assert.equal(renewedState.players[0].nickname,'Beta nová');assert.deepEqual(renewedState.headToHead.wins,[historicScore.wins[1],historicScore.wins[0]],'history follows players even after changing names, tables and seat order');assert.equal(renewedState.headToHead.draws,1);
  await act(renewed.id,a.token,'leave');await act(renewed.id,b.token,'leave');await req('/account',{action:'delete'},b.token);await req('/me',undefined,b.token,401);
  leaderboard=await req('/leaderboard',undefined,a.token);assert.equal(leaderboard.some(u=>u.id===b.user.id),false);
- const replacement=await req('/auth/register',{email:'beta@example.com',password:'verysecure123',nickname:'Beta nová',consent:true});const fresh=await req('/rooms',{closed:false},a.token);await req('/room/'+fresh.id+'/join',{},replacement.token);const freshSocket=await socket(fresh.id,a.token);assert.equal(freshSocket.messages.filter(m=>m.type==='state').at(-1).room.headToHead.games,0,'reusing a deleted nickname does not inherit history');await act(fresh.id,a.token,'leave');await act(fresh.id,replacement.token,'leave');
+ const replacement=await register({email:'beta@example.com',password:'verysecure123',nickname:'Beta nová',consent:true});const fresh=await req('/rooms',{closed:false},a.token);await req('/room/'+fresh.id+'/join',{},replacement.token);const freshSocket=await socket(fresh.id,a.token);assert.equal(freshSocket.messages.filter(m=>m.type==='state').at(-1).room.headToHead.games,0,'reusing a deleted nickname does not inherit history');await act(fresh.id,a.token,'leave');await act(fresh.id,replacement.token,'leave');
+ await mf.setOptions({...options,bindings:{...options.bindings,ADMIN_USER_IDS:a.user.id+','+replacement.user.id}});assert.equal((await req('/me',undefined,replacement.token)).user.admin,true);await req('/admin',{action:'list'},replacement.token);
+ const pending=await req('/auth/register',{email:'pending@example.com',password:'verysecure123',nickname:'Pending',consent:true});const old=new URL(mail.at(-1).text.match(/http:\/\/localhost[^\s]+/)[0]).hash.slice(8);await req('/auth/resend',{email:pending.email});const renewedToken=new URL(mail.at(-1).text.match(/http:\/\/localhost[^\s]+/)[0]).hash.slice(8);await req('/auth/verify',{verification:old},undefined,400);await req('/auth/verify',{verification:renewedToken});
+
  }finally{for(const ws of sockets)try{ws.close();}catch{}await mf.dispose();}
 });

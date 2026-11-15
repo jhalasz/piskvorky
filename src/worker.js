@@ -21,10 +21,24 @@ class Stored extends DurableObject{
 export class Directory extends Stored{
  constructor(ctx,env){super(ctx,env);ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS identities (kind TEXT, identity TEXT, user_id TEXT, PRIMARY KEY(kind,identity))');ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping','pong'));}
  rate(key,limit=20,period=60000){let r=this.read('rate:'+key,{n:0,until:0});if(r.until<Date.now())r={n:0,until:Date.now()+period};if(++r.n>limit)fail('Příliš mnoho požadavků. Zkuste to později.',429);this.write('rate:'+key,r);}
- user(id){return this.read('user:'+id);}
+ isAdmin(id){return (this.env.ADMIN_USER_IDS||this.env.ADMIN_USER_ID||'').split(',').includes(id);}
+ user(id){const u=this.read('user:'+id);return u?{...u,admin:this.isAdmin(id)}:null;}
  active(u){if(!u)fail('Přihlaste se znovu.',401);if(u.bannedUntil>Date.now())fail('Tento účet má zakázaný přístup.',403);return u;}
  async auth(token){if(!token)fail('Přihlaste se.',401);const s=this.read('session:'+await hash(token));if(!s||s.until<Date.now())fail('Přihlaste se znovu.',401);return this.active(this.user(s.id));}
- async session(u){const token=uid()+uid();this.write('session:'+await hash(token),{id:u.id,until:Date.now()+30*86400000});this.ctx.waitUntil((async()=>{if(!await this.ctx.storage.getAlarm())await this.ctx.storage.setAlarm(Date.now()+60000);})());return {token,user:publicUser(u)};}
+ async session(u){const token=uid()+uid();this.write('session:'+await hash(token),{id:u.id,until:Date.now()+30*86400000});this.ctx.waitUntil((async()=>{if(!await this.ctx.storage.getAlarm())await this.ctx.storage.setAlarm(Date.now()+60000);})());return {token,user:publicUser(this.user(u.id))};}
+ mailReady(){return !!(this.env.MAIL_FROM&&this.env.PUBLIC_URL&&(this.env.EMAIL||this.env.RESEND_API_KEY));}
+ async mail(to,subject,text){
+  if(!this.mailReady())fail('Odesílání e-mailů není dostupné.',503);
+  try{if(this.env.EMAIL)await this.env.EMAIL.send({from:this.env.MAIL_FROM,to,subject,text});else{const r=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:'Bearer '+this.env.RESEND_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({from:this.env.MAIL_FROM,to,subject,text})});if(!r.ok)throw Error('Mail rejected');}}
+  catch{fail('E-mail se nepodařilo odeslat. Zkuste to prosím znovu.',503);}
+ }
+ async sendVerification(u){
+  const token=uid()+uid(),key='verify:'+await hash(token),url=new URL(this.env.PUBLIC_URL);url.search='';url.hash='verify='+encodeURIComponent(token);
+  this.write(key,{id:u.id,until:Date.now()+86400000});
+  try{await this.mail(u.email,'Piškvorky – aktivace účtu','Pro aktivaci účtu otevřete tento jednorázový odkaz (platí 24 hodin): '+url.href+'\nPokud jste se neregistrovali, zprávu ignorujte.');}catch(e){this.remove(key);throw e;}
+  for(const v of this.all('verify:'))if(v.id===u.id&&v.key!==key)this.remove(v.key);
+  await this.ctx.storage.setAlarm(Date.now()+60000);
+ }
  async authenticate(kind,data,ip){
   this.rate('auth:'+ip,12);
   if(kind==='guest'){const id=uid(),u={id,nickname:'Host '+id.slice(0,8),guest:true,rating:1000,created:Date.now()};this.write('user:'+id,u);return this.session(u);}
@@ -32,23 +46,24 @@ export class Directory extends Stored{
   if(kind==='register'){
    if(!data.consent)fail('Potvrďte zásady ochrany údajů.');if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254)fail('Zadejte platný e-mail.');
    const nickname=nick(data.nickname),salt=uid(),pw=await password(data.password,salt),id=uid();
-   const u={id,nickname,email,salt,pw,guest:false,rating:1000,created:Date.now(),consentAt:Date.now()};
-   try{this.ctx.storage.transactionSync(()=>{this.ctx.storage.sql.exec('INSERT INTO identities VALUES (?,?,?)','email',email,id);this.ctx.storage.sql.exec('INSERT INTO identities VALUES (?,?,?)','nick',nickname.toLocaleLowerCase('cs'),id);this.write('user:'+id,u);});}catch{fail('E-mail nebo přezdívka už existuje.');}return this.session(u);
+   const u={id,nickname,email,salt,pw,guest:false,rating:1000,created:Date.now(),consentAt:Date.now(),emailVerified:false};
+   if(!this.mailReady())fail('Registrace čeká na zprovoznění ověřovacích e-mailů. Zkuste to prosím později.',503);
+   try{this.ctx.storage.transactionSync(()=>{this.ctx.storage.sql.exec('INSERT INTO identities VALUES (?,?,?)','email',email,id);this.ctx.storage.sql.exec('INSERT INTO identities VALUES (?,?,?)','nick',nickname.toLocaleLowerCase('cs'),id);this.write('user:'+id,u);});}catch{fail('E-mail nebo přezdívka už existuje.');}
+   try{await this.sendVerification(u);}catch(e){this.ctx.storage.sql.exec('DELETE FROM identities WHERE user_id=?',id);this.remove('user:'+id);throw e;}return {verificationRequired:true,email};
   }
   if(kind==='login'){
    const row=this.ctx.storage.sql.exec('SELECT user_id FROM identities WHERE kind=? AND identity=?','email',email).toArray()[0];
    const u=row&&this.user(row.user_id),salt=u?.salt||uid(),pw=await password(data.password,salt);
-   if(!u?.pw||pw!==u.pw)fail('Nesprávný e-mail nebo heslo.',401);this.active(u);return this.session(u);
+   if(!u?.pw||pw!==u.pw)fail('Nesprávný e-mail nebo heslo.',401);this.active(u);if(u.emailVerified===false)fail('Nejdříve aktivujte účet odkazem v e-mailu.',403);return this.session(u);
   }
-  if(kind==='google'){
-   if(!this.env.GOOGLE_CLIENT_ID)fail('Přihlášení Google zatím není nastaveno.',503);
-   const r=await fetch('https://oauth2.googleapis.com/tokeninfo?id_token='+encodeURIComponent(data.credential||''));const t=await r.json();
-   if(!r.ok||t.aud!==this.env.GOOGLE_CLIENT_ID||!['accounts.google.com','https://accounts.google.com'].includes(t.iss)||Number(t.exp)*1000<Date.now()||String(t.email_verified)!=='true')fail('Neplatné přihlášení Google.',401);
-   let row=this.ctx.storage.sql.exec('SELECT user_id FROM identities WHERE kind=? AND identity=?','google',t.sub).toArray()[0];
-   if(row)return this.session(this.active(this.user(row.user_id)));
-   if(!data.consent)fail('Pro založení účtu potvrďte zásady ochrany údajů.');
-   const nickname=nick(data.nickname),id=uid(),u={id,nickname,email:t.email,guest:false,rating:1000,created:Date.now(),consentAt:Date.now()};
-   try{this.ctx.storage.transactionSync(()=>{this.ctx.storage.sql.exec('INSERT INTO identities VALUES (?,?,?)','google',t.sub,id);this.ctx.storage.sql.exec('INSERT INTO identities VALUES (?,?,?)','email',t.email.toLowerCase(),id);this.ctx.storage.sql.exec('INSERT INTO identities VALUES (?,?,?)','nick',nickname.toLocaleLowerCase('cs'),id);this.write('user:'+id,u);});}catch{fail('E-mail nebo přezdívka již existuje. Přihlaste se původním způsobem.');}return this.session(u);
+  if(kind==='verify'){
+   const key='verify:'+await hash(String(data.verification||'')),v=this.read(key);if(!v||v.until<=Date.now())fail('Ověřovací odkaz už není platný. Vyžádejte si nový.');
+   const u=this.user(v.id);if(!u||u.emailVerified!==false)fail('Odkaz už byl použit.');
+   u.emailVerified=true;u.verifiedAt=Date.now();this.write('user:'+u.id,u);this.remove(key);return {ok:true};
+  }
+  if(kind==='resend'){
+   this.rate('verification:'+email,3,3600000);const row=this.ctx.storage.sql.exec('SELECT user_id FROM identities WHERE kind=? AND identity=?','email',email).toArray()[0];const u=row&&this.user(row.user_id);
+   if(u?.emailVerified===false)await this.sendVerification(u);return {ok:true};
   }
   if(kind==='forgot'){
    if(!this.env.RESEND_API_KEY||!this.env.MAIL_FROM)fail('Obnova hesla čeká na nastavení odesílání e-mailů.',503);
@@ -63,12 +78,12 @@ export class Directory extends Stored{
  revoke(id){for(const s of this.all('session:'))if(s.id===id)this.remove(s.key);for(const ws of this.ctx.getWebSockets(id))ws.close(4001,'Přihlaste se znovu');}
  async account(u,data){
   if(data.action==='rename'){const name=nick(data.nickname);if(name===u.nickname)return {user:publicUser(u)};this.ctx.storage.transactionSync(()=>{try{this.ctx.storage.sql.exec('INSERT INTO identities VALUES (?,?,?)','nick',name.toLocaleLowerCase('cs'),u.id);}catch{fail('Přezdívka je obsazená.');}this.ctx.storage.sql.exec('DELETE FROM identities WHERE kind=? AND identity=?','nick',u.nickname.toLocaleLowerCase('cs'));u.nickname=name;this.write('user:'+u.id,u);});}
-  if(data.action==='delete'){const busy=this.read('busy:'+u.id);if(busy)fail('Nejdříve opusťte místnost.');this.revoke(u.id);this.ctx.storage.sql.exec('DELETE FROM identities WHERE user_id=?',u.id);this.remove('user:'+u.id);this.forgetMatchups(u.id);for(const s of this.all('reset:'))if(s.id===u.id)this.remove(s.key);}
+  if(data.action==='delete'){const busy=this.read('busy:'+u.id);if(busy)fail('Nejdříve opusťte místnost.');this.revoke(u.id);this.ctx.storage.sql.exec('DELETE FROM identities WHERE user_id=?',u.id);this.remove('user:'+u.id);this.forgetMatchups(u.id);for(const v of this.all('verify:'))if(v.id===u.id)this.remove(v.key);for(const f of this.all('feedback:'))if(f.by===u.id)this.remove(f.key);for(const s of this.all('reset:'))if(s.id===u.id)this.remove(s.key);}
   if(data.action==='logout')this.revoke(u.id);
   if(data.action==='ignore'){u.ignored=[...new Set([...(u.ignored||[]),data.user])].slice(-200);this.write('user:'+u.id,u);}
   this.broadcast();return {user:data.action==='delete'?null:publicUser(u)};
  }
- leaderboard(){return this.all('user:').filter(u=>!u.guest).map(publicUser).sort((a,b)=>b.rating-a.rating||a.nickname.localeCompare(b.nickname)).slice(0,200);}
+ leaderboard(){return this.all('user:').filter(u=>!u.guest&&u.emailVerified!==false).map(publicUser).sort((a,b)=>b.rating-a.rating||a.nickname.localeCompare(b.nickname)).slice(0,200);}
  presence(){return [...new Set(this.ctx.getWebSockets().filter(w=>w.readyState===1).map(w=>w.deserializeAttachment()?.id))].map(id=>this.user(id)).filter(u=>u&&!(u.bannedUntil>Date.now())).map(u=>({...publicUser(u),room:this.read('busy:'+u.id)?.room||null}));}
  lobby(){return {type:'lobby',rooms:this.all('room:').map(({key,...r})=>r),users:this.presence(),now:Date.now()};}
  broadcast(){const d=this.lobby();for(const ws of this.ctx.getWebSockets())this.send(ws,d);}
@@ -105,7 +120,12 @@ export class Directory extends Stored{
  webSocketClose(){this.broadcast();}
  webSocketError(){this.broadcast();}
  report(u,room,description,messages,target){this.rate('report:'+u.id,3,600000);const id=uid();this.write('report:'+id,{id,by:u.id,room,target,description:clean(description).slice(0,1000),messages,at:Date.now(),until:Date.now()+172800000,status:'new'});this.ctx.storage.setAlarm(Date.now()+60000);return {ok:true};}
- admin(u,data){if(!this.env.ADMIN_USER_ID||u.id!==this.env.ADMIN_USER_ID)fail('Pouze administrátor.',403);if(data.action==='list')return {reports:this.all('report:').filter(r=>r.until>Date.now())};
+ feedback(u,data){
+  const text=String(data.text||'').trim();if(!['bug','idea'].includes(data.type)||text.length<10||text.length>2000)fail('Vyberte druh podnětu a napište 10–2000 znaků.');
+  this.rate('feedback:'+u.id,3,600000);const id=uid();this.write('feedback:'+id,{id,by:u.id,nickname:u.nickname,type:data.type,text,screen:['lobby','game','training','leaderboard'].includes(data.screen)?data.screen:'lobby',at:Date.now(),status:'new'});return {ok:true};
+ }
+ admin(u,data){if(!this.isAdmin(u.id))fail('Pouze administrátor.',403);if(data.action==='list')return {reports:this.all('report:').filter(r=>r.until>Date.now()),feedback:this.all('feedback:').filter(f=>!f.until||f.until>Date.now()).sort((a,b)=>b.at-a.at)};
+  if(['resolveFeedback','reopenFeedback'].includes(data.action)){const f=this.read('feedback:'+data.id);if(!f)fail('Podnět již neexistuje.',404);f.status=data.action==='resolveFeedback'?'resolved':'new';f.until=f.status==='resolved'?Date.now()+30*86400000:null;this.write('feedback:'+f.id,f);return {ok:true};}
   if(data.action==='resolve'){const r=this.read('report:'+data.id);if(r){r.status='resolved';this.write('report:'+data.id,r);}return {ok:true};}
   const target=this.user(data.target);if(!target)fail('Hráč již neexistuje.');
   if(data.action==='warn')target.warning=clean(data.message).slice(0,300)||'Administrátor vás upozorňuje na nevhodné chování.';
@@ -113,7 +133,7 @@ export class Directory extends Stored{
   else if(data.action==='ban'){target.bannedUntil=data.permanent?8640000000000000:Date.now()+Math.min(31536000,Math.max(60,Number(data.seconds)||86400))*1000;this.revoke(target.id);}
   else fail('Neznámý postih.');this.write('user:'+target.id,target);this.notify(target.id,{type:'warning',text:target.warning||'Administrátor upravil váš přístup.'});return {ok:true};
  }
- async alarm(){const now=Date.now();for(const prefix of ['rate:','ticket:','reset:','session:','report:'])for(const r of this.all(prefix))if(r.until<=now)this.remove(r.key);for(const u of this.all('user:'))if(u.guest&&u.created<now-30*86400000&&!this.read('busy:'+u.id)){this.revoke(u.id);this.remove(u.key);this.forgetMatchups(u.id);}for(const reservation of this.all('room-name:'))if(reservation.until<=now&&!this.read('room:'+reservation.key.slice('room-name:'.length)))this.remove(reservation.key);const reports=this.all('report:').map(r=>r.until).filter(t=>t>now);await this.ctx.storage.setAlarm(Math.min(now+3600000,...reports));}
+ async alarm(){const now=Date.now();for(const prefix of ['rate:','ticket:','reset:','session:','report:','verify:','feedback:'])for(const r of this.all(prefix))if(r.until&&r.until<=now)this.remove(r.key);for(const u of this.all('user:'))if(u.guest&&u.created<now-30*86400000&&!this.read('busy:'+u.id)){this.revoke(u.id);this.remove(u.key);this.forgetMatchups(u.id);}for(const reservation of this.all('room-name:'))if(reservation.until<=now&&!this.read('room:'+reservation.key.slice('room-name:'.length)))this.remove(reservation.key);const reports=this.all('report:').map(r=>r.until).filter(t=>t>now);await this.ctx.storage.setAlarm(Math.min(now+3600000,...reports));}
 }
 export class Room extends Stored{
  constructor(ctx,env){super(ctx,env);ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping','pong'));}
@@ -246,14 +266,14 @@ export default {
   if(request.method==='OPTIONS')return new Response(null,{status:204,headers});
   try{
    const d=env.DIRECTORY.getByName('lobby');let result;
-   if(url.pathname==='/api/config')result={googleClientId:env.GOOGLE_CLIENT_ID||'',passwordReset:!!(env.RESEND_API_KEY&&env.MAIL_FROM)};
+   if(url.pathname==='/api/config')result={registration:await d.mailReady(),passwordReset:!!(env.RESEND_API_KEY&&env.MAIL_FROM)};
    else if(url.pathname==='/api/health')result={ok:true,version:'1.0.0'};
    else if(url.pathname==='/api/ws/lobby')return await d.fetch(request);
    else if(url.pathname==='/api/ws/room')return await env.ROOM.getByName(url.searchParams.get('room')||'').fetch(request);
    else{
     if(Number(request.headers.get('Content-Length')||0)>8192)fail('Požadavek je příliš velký.',413);
     let raw='';if(request.method==='POST'){const reader=request.body?.getReader();const chunks=[];let size=0;if(reader){while(true){const part=await reader.read();if(part.done)break;size+=part.value.byteLength;if(size>8192){await reader.cancel();fail('Požadavek je příliš velký.',413);}chunks.push(part.value);}}const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}raw=new TextDecoder().decode(bytes);}if(raw.length>8192)fail('Požadavek je příliš velký.',413);let data={};try{data=raw?JSON.parse(raw):{};}catch{fail('Neplatný požadavek.');}
-    const authMatch=url.pathname.match(/^\/api\/auth\/(guest|register|login|google|forgot|reset)$/);
+    const authMatch=url.pathname.match(/^\/api\/auth\/(guest|register|login|verify|resend|forgot|reset)$/);
     if(authMatch){if(request.method!=='POST')fail('Použijte POST.',405);result=await d.authenticate(authMatch[1],data,request.headers.get('CF-Connecting-IP')||'local');}
     else{
      const u=await d.auth((request.headers.get('Authorization')||'').replace(/^Bearer /,''));
@@ -265,6 +285,7 @@ export default {
       if(url.pathname==='/api/account')result=await d.account(u,data);
       else if(url.pathname==='/api/ticket')result=await d.ticket(u,data.room||'lobby');
       else if(url.pathname==='/api/rooms'){await d.rate('create:'+u.id,5,60000);const id=uid();result=await env.ROOM.getByName(id).init(u,id,data.closed);}
+      else if(url.pathname==='/api/feedback')result=await d.feedback(u,data);
       else if(url.pathname==='/api/admin')result=await d.admin(u,data);
       else if(/^\/api\/room\/[a-f0-9-]{36}\/(join|action|decline)$/.test(url.pathname)){
        const [,id,op]=url.pathname.match(/^\/api\/room\/([^/]+)\/([^/]+)$/);const room=env.ROOM.getByName(id);

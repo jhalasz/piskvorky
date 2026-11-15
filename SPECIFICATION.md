@@ -10,7 +10,7 @@ Všechny body v tomto zadání jsou odsouhlasené, kromě těch uvedených v kap
 2. Hráči a přihlášení
 Hráč může používat:
 • Registrovaný účet s přezdívkou, statistikami a bodovým hodnocením.
-    ◦ Přihlášení přes Google (snadná implementace), záložně e-mail a heslo. Přihlášení přes Facebook případně později, pokud se ukáže jako snadné.
+    ◦ Přihlášení e-mailem a heslem. Nový účet aktivuje jednorázový ověřovací odkaz odeslaný ihned při registraci. Sociální přihlášení se nepoužívá.
     ◦ Přezdívky registrovaných hráčů jsou unikátní.
     ◦ Součástí účtu je obnova hesla, změna přezdívky a smazání účtu (GDPR).
 • Anonymní vstup jako host, bez registrace.
@@ -198,7 +198,7 @@ Síla počítače odpovídá jeho hodnocení v žebříčku
 Oblast
 Tlačítka / ovládání
 Účet
-Registrovat se, Přihlásit se (Google / e-mail), Hrát jako host, Odhlásit se, Změnit přezdívku, Smazat účet
+Registrovat se, Přihlásit se (e-mail), Hrát jako host, Odhlásit se, Změnit přezdívku, Smazat účet
 Hlavní rozhraní
 Založit hru, Připojit se, Sledovat, Trénink, Žebříček, Seznam přihlášených uživatelů
 Pozvánky
@@ -231,3 +231,4 @@ Spustit trénink, Ukončit trénink
 • Přihlášení přes Facebook: zda a kdy přidat (vyžaduje schválení aplikace).
 • Obtížnost počítače: přesné přiřazení úrovní k hodnocení a nastavení síly.
 • Limity: počet stolů a diváků na stůl.
+Správci: jhal a Lenka podle ID účtů. Hlášení chyb a tipů je dostupné i hostům. Hosting pouze Cloudflare; GitHub ukládá zdrojový kód a spouští kontroly.

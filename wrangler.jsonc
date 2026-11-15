@@ -4,5 +4,5 @@
  "durable_objects":{"bindings":[{"name":"DIRECTORY","class_name":"Directory"},{"name":"ROOM","class_name":"Room"}]},
  "migrations":[{"tag":"v1","new_sqlite_classes":["Directory","Room"]}],
  "observability":{"enabled":true,"redact_query_string":true,"traces":{"enabled":true}},
- "vars":{"ALLOWED_ORIGINS":"https://jhalasz.github.io","GOOGLE_CLIENT_ID":"","PUBLIC_URL":"https://piskvorky-api.jan-halasz.workers.dev"}
+ "vars":{"ALLOWED_ORIGINS":"","ADMIN_USER_IDS":"9c3c0c00-0eed-4852-b382-d94d86d41958,b9e72592-e12c-45df-bd11-168698ba90a0","PUBLIC_URL":"https://piskvorky-api.jan-halasz.workers.dev"}
 }

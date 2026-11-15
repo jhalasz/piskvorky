@@ -22,7 +22,7 @@ Testy ověřují pravidla, hranice desky, Elo, přerušení spojení a chování
 
 ## Architektura
 
-- `public/`: samostatný statický web pro GitHub Pages i Cloudflare, bez sestavení. Na počítači se tah odešle ihned kliknutím. Na mobilu (dotykové ovládání bez myši) nejdříve vyberete pole a pak potvrdíte tah.
+- `public/`: samostatný statický web pro Cloudflare, bez sestavení. Na počítači se tah odešle ihned kliknutím. Na mobilu (dotykové ovládání bez myši) nejdříve vyberete pole a pak potvrdíte tah.
 - `src/game.js`: společná pravidla. `public/game.js` je identická kopie pro prohlížeč.
 - `src/worker.js`: HTTPS API. Každý stůl má vlastní SQLite Durable Object `Room`, hibernující WebSockety a alarmy. `Directory` koordinuje přehled místností, přítomnost, identity a transakční Elo.
 - SQL úložiště obsahuje vždy aktuální desku, nikoli historii tahů. Při ukončení partie je deska na serveru smazána; aktuálně připojené prohlížeče si finální pozici ponechají pro zvýraznění výhry. Nový divák již ukončenou desku nezíská.
@@ -41,9 +41,7 @@ npx wrangler deploy
 
 Konfigurace je v `wrangler.jsonc`; obě třídy používají SQLite. Native static assets se nasadí s Workerem. Alternativně lze po dry-run spustit `node scripts/package-worker.mjs` a nahrát `build/deploy.js` přes Workers API: obsahuje i veřejné statické soubory. První nasazení vyžaduje migraci `v1` pro `Directory` a `Room`.
 
-### GitHub Pages
-
-Workflow `.github/workflows/pages.yml` publikuje adresář `public` po změně `main`. V nastavení repozitáře **Settings → Pages → Source** musí být vybráno **GitHub Actions**. API používá `public/config.js`, kde je adresa produkčního Workeru. GitHub Pages URL je https://jhalasz.github.io/piskvorky/ po aktivaci Pages.
+GitHub slouží pouze k uchování zdrojového kódu a kontrolám. Publikování přes GitHub Pages bylo odstraněno.
 
 Workflow Checks provádí kontrolu syntaxe, sestavení Workeru a všechny testy. Nasazení backendu z GitHubu není automatické, takže se do repozitáře neukládají přístupové tokeny.
 
@@ -60,16 +58,13 @@ Workflow Checks provádí kontrolu syntaxe, sestavení Workeru a všechny testy.
 - AI v prohlížeči: osm úrovní, host začíná na 1 a po výhře postupuje, registrovaný hráč podle Elo (700–799 úroveň 1, 800–899 úroveň 2, …, od 1 400 úroveň 8). AI vždy bere okamžitou výhru a kryje bezprostřední prohru.
 - Administrační seznam hlášení, varování, dočasné umlčení, dočasný i trvalý zákaz účtu nebo identity hosta.
 
-## Nastavení provozovatele, které chybí
+## Administrace, podněty a aktivace účtů
 
-Tyto integrace mají implementovaný kód, ale bez vlastních údajů provozovatele jsou v UI výslovně nedostupné:
+Správci jsou účty jhal a Lenka. `ADMIN_USER_IDS` obsahuje jejich neměnná ID oddělená čárkou; server ověřuje oprávnění při každém požadavku. V patičce správce vidí Správu. Hráči i hosté mohou odeslat chybu nebo tip; podněty vidí pouze správci, mohou je vyřídit a znovu otevřít. Vyřízené podněty se mažou po 30 dnech, vlastní podněty také při smazání účtu.
 
-1. **Google:** vytvořit webový OAuth klient v Google Cloud, povolit domény webu, nastavit `GOOGLE_CLIENT_ID`. Server ověřuje audience, issuer, expiraci a ověřený e-mail tokenu. Existující e-mailový účet se automaticky nespojuje s novou identitou Google.
-2. **Obnova hesla e-mailem:** nastavit tajný `RESEND_API_KEY`, ověřenou odesílací adresu `MAIL_FROM` a `PUBLIC_URL`. Resetovací odkazy platí 30 minut a zneplatní všechny relace. Žádný resetovací token se nevrací z API.
-3. **Administrátor:** po založení vlastního účtu zkopírovat jeho ID z nastavení účtu a přidat jej jako `ADMIN_USER_ID` do Cloudflare. Administrátora neurčuje neověřený e-mail. Během prvního nasazení není určen žádný admin.
-4. **Ochrana osobních údajů:** doplnit identifikaci a kontakt provozovatele v `public/app.js` (funkce `privacy`). Současný text vysvětluje technické zpracování, ale neobsahuje úplnou identifikaci provozovatele.
+Nové účty jsou do ověření e-mailu neaktivní a nedostanou přihlašovací relaci ani místo v žebříčku. Registrace čeká na přijetí e-mailu odesílací službou; při chybě odeslání se nová registrace vrátí zpět. Odkaz je náhodný, jednorázový, platí 24 hodin a v úložišti je jen jeho otisk. Token je ve fragmentu odkazu, aby se neposílal do přístupových logů. Aktivace vyžaduje potvrzení na stránce, aby odkaz nespotřeboval e-mailový skener. Nový odkaz lze vyžádat z přihlášení; předchozí zneplatní až úspěšné odeslání nového. Starší existující účty zůstávají aktivní.
 
-Nejsou zavedeny neschválené dodatečné tresty za opakované opouštění partií ani přihlášení Facebookem. Přesné síly AI a provozní limity jsou výše zdokumentované výchozí hodnoty určené ke kalibraci. Základní filtr slov nenahrazuje lidské vyřizování hlášení.
+Odesílání vyžaduje `PUBLIC_URL`, ověřenou odesílací adresu `MAIL_FROM` a buď binding `EMAIL` pro Cloudflare Email Sending, nebo tajný `RESEND_API_KEY`. Bez konfigurace registrace vrací jasnou chybu a netvrdí, že e-mail odeslala. Aktuální připojení Cloudflare nemá oprávnění k nastavení Email Sending; produkční odesílání je zatím blokováno. Obnova hesla je volitelná přes Resend, odkazy platí 30 minut a zneplatní relace. Přihlášení Google ani Facebook není součástí hry.
 
 ## Bezpečnost a provoz
 
