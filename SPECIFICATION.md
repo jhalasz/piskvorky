@@ -232,3 +232,13 @@ Spustit trénink, Ukončit trénink
 • Obtížnost počítače: přesné přiřazení úrovní k hodnocení a nastavení síly.
 • Limity: počet stolů a diváků na stůl.
 Správci: jhal a Lenka podle ID účtů. Hlášení chyb a tipů je dostupné i hostům. Hosting pouze Cloudflare; GitHub ukládá zdrojový kód a spouští kontroly.
+
+20. Trénink pozic a výběr symbolů – doplnění 16. 11. 2026
+• Trénink nabídne několik předdefinovaných pozic a editor vlastního rozložení. U každé pozice je výslovně určen symbol na tahu a symbol hráče; počítač může pokračovat jako první a hrát za kterýkoliv symbol.
+• Editor nabízí ×, ○ a gumu. Vlastní cvičení může mít libovolné počty symbolů; už vyhrané nebo plné pozice se nespouštějí. Vlastní rozložení lze uložit a načíst v prohlížeči a výchozí pozici lze opakovat.
+• Zdroje pro další výuku: VCPR Surewiny https://www.vcpr.cz/vyuka-online/surewiny/ a Direct #1 https://www.vcpr.cz/vyuka-online/surewiny/?show=1. Direct/Indirect jsou konkrétní rozbory jistých výher a mají sloužit jako podklad výuky; nenahrazovat je pouze obecnými radami ani neověřenými tahy. Jejich diagramy zatím nebyly dostupné pro přepis. Aktuálně hra obsahuje vlastní ověřená taktická cvičení a označenou Allisovu studijní pozici, nikoli úplnou databázi surewinů.
+• Nastavení stolu: Bez výměny (výchozí), Swap, Swap2. Změna před první partií ruší připravenost obou hráčů. Během partie ani při odvetě se pravidlo nemění.
+• Swap: zahajující rozestaví × ○ ×, druhý hráč vybere symbol. Swap2: druhý hráč může místo volby přidat ○ × a předat volbu zahajujícímu. Po rozhodnutí hraje vlastník ○. Volba se promítne do symbolů hráčů, oprávnění tahů, výsledku a diváckého pohledu.
+• Zelené ⇄ (u Swap2 s číslem 2) v lobby označuje výběr symbolů. Detail a nápověda rozlišují obě varianty.
+• Server kontroluje každou fázi. Na každý kámen a rozhodnutí běží běžný čas 40 s; platí odpojení/návrat, vzdání a remíza. V odvetě se střídá rozestavující hráč, nezávisle na vybraných symbolech.
+• Jde o převzetí turnajového zahájení do naší varianty: deska zůstává 19 × 19 a výhra nejméně pěti. Turnajové gomoku je 15 × 15 a přesně pět. Zdroj: https://www.piskvorky.cz/federace/oficialni-pravidla-piskvorek-gomoku/

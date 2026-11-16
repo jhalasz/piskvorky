@@ -71,3 +71,11 @@ Odesílání vyžaduje `PUBLIC_URL`, ověřenou odesílací adresu `MAIL_FROM` a
 API neakceptuje klientský výsledek, symbol ani hodnocení. Identita se odvozuje z relace, hráčské role kontroluje místnost. WebSocket se otevírá jednorázovým krátkodobým lístkem; dlouhodobý token není v URL. Cross-origin přístup je povolen pouze nakonfigurovaným doménám. Textové vstupy jsou omezeny, kód se nevkládá jako HTML. Ochrana proti zneužití zahrnuje limity autentizace, zakládání stolů, ovládání, hlášení a chatu. Hostův zákaz se váže na jeho identitu; vymazáním tokenu lze získat nového hosta, jak připouští zadání.
 
 V případě výpadku celé služby není z jedné klientské chyby možné dokonale odlišit globální výpadek od síťové chyby; implementace používá souběžné odpojení obou hráčů a opoždění alarmu. Před větší veřejnou propagací je vhodný zátěžový test, kalibrace AI a nastavení monitoringu.
+
+## Trénink pozic a Swap / Swap2 (16. 11. 2026)
+
+Trénink nyní začíná výběrem pozice: prázdná deska, pět vlastních taktických cvičení a Allisovo publikované zahájení po 13 tazích. Každá má určený symbol na tahu a symbol hráče, které lze změnit. Editor dovoluje pokládat ×, ○, gumovat, ukládat a načítat jedno vlastní rozložení v localStorage a opakovat výchozí pozici. Hotové výhry a plné desky nelze spustit. AI hraje oba symboly, nemění Elo a neimplementuje úplné řešení gomoku. `public/training.js` obsahuje pozice, validaci, nápovědy a zdroje. Cvičení jsou originální, diagramy Direct/Indirect nebyly přepsány; odkazy na VCPR jsou ve hře.
+
+Stoly mají `openingRule` (`none`, `swap`, `swap2`). Starší stoly a rozehrané hry bez nových polí fungují dál. Server drží odděleně `first` (rozestavující sedadlo), `turn` (aktuální aktér), `marks` (symbol podle sedadla) a `opening` (fáze rozestavení / rozhodování). Volba se provádí přes autorizovanou akci `openingChoice`. V odvetě se střídá rozestavující, nikoli poslední vlastník ×. Hráč může před první partií změnit zahájení; oba musí znovu potvrdit připravenost. Lobby přenáší nastavení a zobrazuje zelené šipky. Zachováváme 19 × 19 a nejméně pět, přebíráme jen turnajový protokol zahájení.
+
+Rozšířené testy pokrývají obě volby v obou variantách a sedadlech, pětikamenové zahájení, neplatné aktéry/volby, obnovu stavu, timeout, odvetu, starší hry, zobrazení protokolu divákům a přesnost taktických cvičení proti všem jednotlivým obranám.

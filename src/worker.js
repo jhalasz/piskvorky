@@ -1,6 +1,6 @@
 import {DurableObject} from 'cloudflare:workers';
 import {chooseTableName} from './table-names.js';
-import {newGame,move,disconnect,reconnect,elo,TURN} from './game.js';
+import {newGame,move,chooseOpening,openingRule,disconnect,reconnect,elo,TURN} from './game.js';
 const json=(v,status=200)=>Response.json(v,{status,headers:{'Cache-Control':'no-store'}});
 const fail=(text,status=400)=>{throw Object.assign(Error(text),{status});};
 const uid=()=>crypto.randomUUID();
@@ -141,7 +141,7 @@ export class Room extends Stored{
  state(){return this.read('state');}
  save(s){this.write('state',s);}
  player(s,u){return s.players.findIndex(p=>p?.id===u.id);}
- summary(s){return {id:s.id,name:s.name,players:s.players.map(p=>p?{id:p.id,nickname:p.nickname}:null),status:s.game?.status==='playing'?'playing':s.game?.status==='finished'?'finished':s.players.filter(Boolean).length===2?'ready':'waiting',closed:s.closed,invite:s.invite?{nickname:s.invite.nickname,until:s.invite.until}:null};}
+ summary(s){return {id:s.id,name:s.name,players:s.players.map(p=>p?{id:p.id,nickname:p.nickname}:null),status:s.game?.status==='playing'?'playing':s.game?.status==='finished'?'finished':s.players.filter(Boolean).length===2?'ready':'waiting',closed:s.closed,openingRule:s.openingRule||'none',invite:s.invite?{nickname:s.invite.nickname,until:s.invite.until}:null};}
  view(s){const {invite,link,...v}=s;return {...v,invite:invite?{id:invite.id,target:invite.target,nickname:invite.nickname,until:invite.until}:null,now:Date.now()};}
  async flush(){let s=this.state();if(!s)return;
   if(s.expiredPlayers?.length){const expired=s.expiredPlayers;delete s.expiredPlayers;this.save(s);for(const id of expired)await this.directory().release(id,s.id);s=this.state();}
@@ -186,7 +186,7 @@ export class Room extends Stored{
    else if(!g.paused&&g.deadline<=now)this.finish(s,{winner:g.players[1-g.turn],reason:'čas'});
   }
  }
- async init(u,id,closed){await this.directory().claim(u.id,id);if(this.state())fail('Místnost již existuje.');const name=await this.directory().roomName(id);const s={id,name,players:[publicUser(u),null],ready:[false,false],closed:!!closed,chatLocked:false,chat:[],game:null,created:Date.now(),cleanupAt:Date.now()+60000};this.save(s);await this.flush();return {id};}
+ async init(u,id,closed,rule='none'){openingRule(rule);await this.directory().claim(u.id,id);if(this.state())fail('Místnost již existuje.');const name=await this.directory().roomName(id);const s={id,name,players:[publicUser(u),null],ready:[false,false],closed:!!closed,openingRule:rule,chatLocked:false,chat:[],game:null,created:Date.now(),cleanupAt:Date.now()+60000};this.save(s);await this.flush();return {id};}
  async join(u,invite){let s=this.state();if(!s)fail('Stůl již neexistuje.',404);this.expire(s);this.save(s);
   if(this.player(s,u)>=0)return {id:s.id};
   if(s.game?.status==='playing'||s.players.filter(Boolean).length===2)fail('Obě místa jsou obsazená.');
@@ -210,7 +210,13 @@ export class Room extends Stored{
    const last=this.read('action:'+u.id,0);if(Date.now()-last<150)fail('Příliš rychlé ovládání.',429);this.write('action:'+u.id,Date.now());
    if(a==='ready'){
     if(s.players.filter(Boolean).length!==2||g?.status==='playing')fail('Čekáme na druhého hráče.');s.ready[i]=true;
-    if(s.ready.every(Boolean)){s.game=newGame(s.players.map(p=>p.id),crypto.getRandomValues(new Uint8Array(1))[0]%2);s.readyUntil=null;}
+    if(s.ready.every(Boolean)){s.game=newGame(s.players.map(p=>p.id),crypto.getRandomValues(new Uint8Array(1))[0]%2,s.openingRule);s.readyUntil=null;}
+   }else if(a==='openingRule'){
+    if(g)fail('Zahájení lze změnit pouze před první partií u stolu.');
+    s.openingRule=openingRule(data.rule);s.ready=[false,false];
+    if(s.players.every(Boolean))s.readyUntil=Date.now()+60000;
+   }else if(a==='openingChoice'){
+    if(!g)fail('Partie ještě nezačala.');chooseOpening(g,u.id,data.choice);
    }else if(a==='move'){
     if(!g)fail('Partie ještě nezačala.');const result=move(g,u.id,data.index);if(result){const final={board:g.board.slice(),win:g.win.slice(),last:g.last};this.finish(s,result);for(const ws of this.ctx.getWebSockets())this.send(ws,{type:'final',...final});}
    }else if(a==='resign'){if(g?.status!=='playing')fail('Partie neprobíhá.');this.finish(s,{winner:s.players[1-i].id,reason:'vzdání'});}
@@ -225,7 +231,7 @@ export class Room extends Stored{
    }else if(a==='rematch'){
     if(g?.status!=='finished'||s.players.filter(Boolean).length!==2)fail('Odveta není dostupná.');if(g.rematch)fail('Nabídka odvety už čeká.');g.rematch={from:u.id,until:Date.now()+30000};
    }else if(a==='rematchReply'){
-    if(!g?.rematch||g.rematch.from===u.id||s.players.filter(Boolean).length!==2)fail('Nabídka již není platná.');if(data.accept){s.game=newGame(s.players.map(p=>p.id),1-g.first);s.ready=[true,true];}else g.rematch=null;
+    if(!g?.rematch||g.rematch.from===u.id||s.players.filter(Boolean).length!==2)fail('Nabídka již není platná.');if(data.accept){s.game=newGame(s.players.map(p=>p.id),1-g.first,s.openingRule);s.ready=[true,true];}else g.rematch=null;
    }else if(a==='invite'){
     if(s.players.filter(Boolean).length===2||g?.status==='playing')fail('Stůl je obsazený.');const target=await this.directory().checkInvite(u.id,data.target);s=this.state();if(s.players.filter(Boolean).length===2)fail('Stůl je již obsazený.');s.invite={id:uid(),target:target.id,nickname:target.nickname,until:Date.now()+120000};this.save(s);await this.directory().notify(target.id,{type:'invitation',room:s.id,name:s.name,from:u.nickname,fromId:u.id,until:s.invite.until});
    }else if(a==='cancelInvite')s.invite=null;
@@ -284,7 +290,7 @@ export default {
       if(request.method!=='POST')fail('Použijte POST.',405);
       if(url.pathname==='/api/account')result=await d.account(u,data);
       else if(url.pathname==='/api/ticket')result=await d.ticket(u,data.room||'lobby');
-      else if(url.pathname==='/api/rooms'){await d.rate('create:'+u.id,5,60000);const id=uid();result=await env.ROOM.getByName(id).init(u,id,data.closed);}
+      else if(url.pathname==='/api/rooms'){await d.rate('create:'+u.id,5,60000);const id=uid();result=await env.ROOM.getByName(id).init(u,id,data.closed,data.openingRule);}
       else if(url.pathname==='/api/feedback')result=await d.feedback(u,data);
       else if(url.pathname==='/api/admin')result=await d.admin(u,data);
       else if(/^\/api\/room\/[a-f0-9-]{36}\/(join|action|decline)$/.test(url.pathname)){

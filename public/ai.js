@@ -1,7 +1,8 @@
-import {winning} from './game.js';
+import {winning} from './game.js?v=20261116-1';
 const dirs=[[1,0],[0,1],[1,1],[1,-1]];
 function value(board,i,mark){let score=0;const x=i%19,y=Math.floor(i/19);for(const [dx,dy]of dirs){let n=1,open=0;for(const sign of [-1,1]){let a=x+dx*sign,b=y+dy*sign;while(a>=0&&a<19&&b>=0&&b<19&&board[b*19+a]===mark){n++;a+=dx*sign;b+=dy*sign;}if(a>=0&&a<19&&b>=0&&b<19&&!board[b*19+a])open++;}score+=n>=5?1e8:n===4?(open===2?1e6:open?1e5:0):n===3?(open===2?16000:open?700:0):n===2?(open===2?500:open?50:0):open*5;}return score;}
-export function chooseMove(board,level=1,random=Math.random){
+export function chooseMove(board,level=1,random=Math.random,mark=2){
+ if(mark===1)board=board.map(v=>v?3-v:0);
  const occupied=board.flatMap((v,i)=>v?[i]:[]);if(!occupied.length)return 180;
  const near=new Set();for(const i of occupied){const x=i%19,y=Math.floor(i/19);for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){const a=x+dx,b=y+dy;if(a>=0&&a<19&&b>=0&&b<19&&!board[b*19+a])near.add(b*19+a);}}
  const candidates=[...near];if(!candidates.length)return null;

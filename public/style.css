@@ -86,3 +86,29 @@ main.in-game{padding-top:12px;padding-bottom:12px;min-height:0}
 .board-viewport .board-coordinates{grid-template-columns:calc(22px * var(--board-zoom,1)) minmax(0,1fr) calc(22px * var(--board-zoom,1));grid-template-rows:calc(22px * var(--board-zoom,1)) auto calc(22px * var(--board-zoom,1))}
 .board-viewport .board-axis{font-size:calc(11px * var(--board-zoom,1))}.board-viewport .cell{font-size:calc(clamp(13px,2vw,27px) * var(--board-zoom,1))}
 @media(max-width:760px){.board-viewport .board-coordinates{grid-template-columns:calc(18px * var(--board-zoom,1)) minmax(0,1fr) calc(18px * var(--board-zoom,1));grid-template-rows:calc(18px * var(--board-zoom,1)) auto calc(18px * var(--board-zoom,1))}.board-viewport .board-axis{font-size:calc(9px * var(--board-zoom,1))}.board-viewport .cell{font-size:calc(clamp(13px,3.4vw,23px) * var(--board-zoom,1))}}
+
+/* Opening selection and position training */
+.swap-badge{display:inline-flex;align-items:center;justify-content:center;color:#147544;background:#e1f1e7;border:1px solid #a7d1b8;border-radius:7px;padding:0 5px;min-width:25px;font-size:22px;line-height:1.15;vertical-align:middle;margin-left:5px;flex-shrink:0}
+.swap-badge small{font-size:11px;font-weight:800;margin-left:1px}
+.opening-settings{display:grid;gap:8px;width:100%;padding-bottom:12px;border-bottom:1px solid var(--line,#ddd)}
+.room-settings{flex-wrap:wrap}
+.training-tools{padding:20px;display:grid;gap:14px}
+.training-tools label{display:grid;gap:6px;font-size:13px;font-weight:600}
+.training-tools select{width:100%;min-width:0}
+.training-tools .game-actions,.brushes{display:flex;flex-wrap:wrap;gap:6px}
+.training-tools .game-actions .btn{flex:1 1 110px}
+.brushes .btn{flex:1;padding:10px 6px}
+.brushes [aria-pressed="true"]{background:#2b6359;color:white;border-color:#2b6359}
+.training-tools p{margin:0;font-size:13px;line-height:1.65}
+.training-tools details{font-size:13px;line-height:1.6}
+.training-tools summary{cursor:pointer;font-weight:700}
+.training-tools details p{margin-top:10px}
+.training-tools a{color:#246455;text-underline-offset:3px}
+#turn-actions>.btn{margin-top:8px}
+@media(max-width:760px){.training-tools{padding:16px}.room-name{flex-wrap:wrap}}
+
+.in-game .opening-settings{grid-column:1/-1}
+.training-mode .game-sidebar{height:auto}
+.training-tools{flex-shrink:0}
+.opening-description{font-size:13px;line-height:1.6;margin:12px 0}
+.opening-description summary{cursor:pointer}

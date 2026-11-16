@@ -8,17 +8,59 @@ export function winning(board,index){
  }return [...new Set(lines)];
 }
 export function elo(a,b,score){const change=Math.round(32*(score-1/(1+10**((b-a)/400))));return [a+change,b-change];}
-export function newGame(players,first=0){return {id:crypto.randomUUID(),board:Array(361).fill(0),players:[...players],first,turn:first,status:'playing',deadline:Date.now()+TURN,last:null,win:[],drawCounts:[0,0],draw:null,rematch:null,disconnected:{}};}
-export function move(game,user,index,now=Date.now()){
+export const OPENING_RULES=['none','swap','swap2'];
+export function openingRule(value='none'){
+ if(!OPENING_RULES.includes(value))throw Error('Neplatné pravidlo zahájení.');
+ return value;
+}
+// first is the opening proposer, never changed by choosing a colour.
+// marks maps seat -> symbol and falls back for games saved before this feature.
+export function playerMark(game,seat){return game?.marks?.[seat]??(seat===(game?.first??0)?1:2);}
+export function nextMark(game){return game.opening?([1,2,1,2,1][game.opening.placed]??0):playerMark(game,game.turn);}
+export function newGame(players,first=0,rule='none'){
+ openingRule(rule);
+ return {id:crypto.randomUUID(),board:Array(SIZE*SIZE).fill(0),players:[...players],first,turn:first,marks:first===0?[1,2]:[2,1],openingRule:rule,
+  opening:rule==='none'?null:{phase:'place3',placed:0},status:'playing',deadline:Date.now()+TURN,last:null,win:[],drawCounts:[0,0],draw:null,rematch:null,disconnected:{}};
+}
+function validateActor(game,user,now){
  if(game.status!=='playing')throw Error('Partie právě neprobíhá.');
  if(game.players[game.turn]!==user)throw Error('Nyní hraje soupeř.');
  if(game.paused)throw Error('Čekáme na návrat soupeře.');
  if(now>=game.deadline)throw Error('Čas na tah vypršel.');
- if(!Number.isInteger(index)||index<0||index>=361||game.board[index])throw Error('Vyberte prázdné políčko.');
- game.board[index]=game.turn===game.first?1:2;game.last=index;game.win=winning(game.board,index);
+}
+function advance(game,seat,now){
+ game.turn=seat;game.deadline=now+TURN;
+ if(game.disconnected[game.players[seat]]){game.paused=true;game.remaining=TURN;}
+}
+export function chooseOpening(game,user,choice,now=Date.now()){
+ validateActor(game,user,now);
+ const o=game.opening;
+ if(!o||!['choose','chooseFinal'].includes(o.phase))throw Error('Teď se symbol nevybírá.');
+ if(choice==='extend'){
+  if(game.openingRule!=='swap2'||o.phase!=='choose')throw Error('Další dva kameny lze přidat jen jednou ve Swap2.');
+  o.phase='place2';advance(game,game.turn,now);return;
+ }
+ if(choice!==1&&choice!==2)throw Error('Vyber křížky nebo kolečka.');
+ game.marks[game.turn]=choice;game.marks[1-game.turn]=3-choice;game.opening=null;
+ // Three/five stones already placed: the next stone is always the second colour.
+ advance(game,game.marks.indexOf(2),now);
+}
+export function move(game,user,index,now=Date.now()){
+ validateActor(game,user,now);
+ if(game.opening&&['choose','chooseFinal'].includes(game.opening.phase))throw Error('Nejdříve zvol symbol nebo přidání kamenů.');
+ if(!Number.isInteger(index)||index<0||index>=SIZE*SIZE||game.board[index])throw Error('Vyberte prázdné políčko.');
+ game.board[index]=nextMark(game);game.last=index;
+ if(game.opening){
+  const o=game.opening;o.placed++;
+  if(o.placed===3){o.phase='choose';advance(game,1-game.first,now);}
+  else if(o.placed===5){o.phase='chooseFinal';advance(game,game.first,now);}
+  else advance(game,game.turn,now);
+  return null;
+ }
+ game.win=winning(game.board,index);
  if(game.win.length)return {winner:user,reason:'řada'};
  if(game.board.every(Boolean))return {winner:null,reason:'plná deska'};
- game.turn=1-game.turn;game.deadline=now+TURN;if(game.disconnected[game.players[game.turn]]){game.paused=true;game.remaining=TURN;}return null;
+ advance(game,1-game.turn,now);return null;
 }
 export function disconnect(game,user,now=Date.now()){
  if(game.status!=='playing'||game.disconnected[user])return null;
